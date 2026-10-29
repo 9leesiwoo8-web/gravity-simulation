@@ -10,7 +10,12 @@
 - 입자 128개 이상이면 GPU(OpenCL)에서 여러 스텝을 연속으로 계산, 그보다 적거나 GPU를 쓸 수 없으면 CPU로 계산
 - SFML 렌더링: 궤적, 충돌 이펙트, HUD
 
-## 필요한 것 (Windows)
+## 바로 실행하기 (빌드 없이)
+
+[`release/moolli_release.zip`](release/moolli_release.zip)을 받아 압축을 풀고 `main.exe`를 실행한다.
+64비트 Windows와 최신 그래픽 드라이버만 있으면 된다. 압축 안의 DLL을 빼면 실행되지 않는다.
+
+## 필요한 것 (Windows, 직접 빌드할 때)
 
 1. [MSYS2](https://www.msys2.org)를 `C:\msys64`에 설치한다.
 2. MSYS2 **MINGW64** 터미널에서 패키지를 설치한다.

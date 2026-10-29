@@ -26,6 +26,14 @@ namespace Config {
     inline constexpr double RADIUS_BASE = 2.0;
     inline constexpr double RADIUS_PER_CBRT_MASS = 0.8;
 
+    // ---- 비교 모드 (오일러 vs Verlet 에너지 비교) ----
+    // 오차가 눈에 보이도록 시뮬레이션 모드보다 큰 스텝을 쓴다.
+    inline constexpr double COMPARE_DT = 0.01;
+    inline constexpr int COMPARE_DEFAULT_TIME_SCALE = 20;   // 프레임당 물리 스텝 수
+    inline constexpr std::size_t ENERGY_LOG_MAX_SAMPLES = 2000;
+    inline constexpr int STATUS_MESSAGE_FRAMES = 240;       // 저장 안내를 보여 주는 시간
+    inline constexpr float COMPARE_GRAPH_HEIGHT_RATIO = 0.38f;  // 창 높이 중 그래프 비율
+
     // ---- 궤도 이탈 ----
     // 질량중심에서 이 거리보다 멀어지면 제거한다.
     inline constexpr double ESCAPE_RADIUS = 4000.0;

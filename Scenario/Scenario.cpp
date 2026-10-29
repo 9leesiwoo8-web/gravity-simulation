@@ -81,6 +81,27 @@ namespace {
         }
     }
 
+    // center 주위 반지름 r, 각도 angle 위치에 원궤도 속도의 speed_factor배로 천체를 놓는다.
+    // speed_factor < 1이면 타원 궤도가 된다. (비교 모드용, 난수 없음)
+    void add_body(
+        std::vector<Particle>& out,
+        Type type,
+        double mass,
+        const Vector2& center,
+        const Vector2& center_velocity,
+        double central_mass,
+        double r,
+        double angle,
+        double speed_factor)
+    {
+        double speed = std::sqrt(Config::G * central_mass / r) * speed_factor;
+
+        Vector2 offset(r * std::cos(angle), r * std::sin(angle));
+        Vector2 tangent(-std::sin(angle), std::cos(angle));
+
+        out.emplace_back(mass, type, center + offset, center_velocity + tangent * speed);
+    }
+
     // ---- F1: 태양계 ----
     void build_solar_system(PhysicsWorld& world)
     {
@@ -193,6 +214,111 @@ namespace {
         world.add_Particle(Particle(5000.0, Type::SUN, Vector2(0, 0), Vector2(0, 0)));
     }
 
+
+    // ---- 비교 F1: 타원 궤도 ----
+    // 태양 하나와 길쭉한 타원 궤도의 행성 하나. 오일러의 에너지 증가가 가장 뚜렷하다.
+    void build_compare_eccentric(PhysicsWorld& world)
+    {
+        constexpr double SUN_MASS = 5000.0;
+
+        std::vector<Particle> bodies;
+        bodies.emplace_back(SUN_MASS, Type::SUN, Vector2(0, 0), Vector2(0, 0));
+
+        const Vector2 origin;
+        add_body(bodies, Type::PLANET, 10.0, origin, origin, SUN_MASS, 300.0, 0.0, 0.7);
+
+        add_to_world(world, bodies);
+    }
+
+    // ---- 비교 F2: 작은 태양계 ----
+    void build_compare_solar_system(PhysicsWorld& world)
+    {
+        constexpr double SUN_MASS = 5000.0;
+
+        std::vector<Particle> bodies;
+        bodies.emplace_back(SUN_MASS, Type::SUN, Vector2(0, 0), Vector2(0, 0));
+
+        const Vector2 origin;
+
+        struct Planet { Type type; double mass; double r; double speed_factor; };
+        const Planet planets[] = {
+            {Type::PLANET,    5.0, 100.0, 1.00},
+            {Type::PLANET,   10.0, 150.0, 0.90},
+            {Type::PLANET,    8.0, 220.0, 1.00},
+            {Type::PLANET,   20.0, 300.0, 0.85},
+            {Type::GIANT,   150.0, 380.0, 1.00},
+            {Type::GIANT,   100.0, 450.0, 0.95},
+            {Type::PLANET,   30.0, 520.0, 1.00},
+            {Type::PLANET,   40.0, 600.0, 0.90},
+        };
+
+        double angle = 0.0;
+        for(const Planet& p : planets) {
+            add_body(bodies, p.type, p.mass, origin, origin, SUN_MASS, p.r, angle, p.speed_factor);
+            angle += 0.9;
+        }
+
+        add_to_world(world, bodies);
+    }
+
+    // ---- 비교 F3: 쌍성계 ----
+    void build_compare_binary(PhysicsWorld& world)
+    {
+        constexpr double STAR_MASS = 2500.0;
+        constexpr double SEPARATION = 300.0;
+
+        const double star_speed = std::sqrt(Config::G * STAR_MASS / (2.0 * SEPARATION));
+
+        const Vector2 pos_a(-SEPARATION / 2.0, 0.0);
+        const Vector2 pos_b( SEPARATION / 2.0, 0.0);
+        const Vector2 vel_a(0.0,  star_speed);
+        const Vector2 vel_b(0.0, -star_speed);
+
+        std::vector<Particle> bodies;
+        bodies.emplace_back(STAR_MASS, Type::SUN, pos_a, vel_a);
+        bodies.emplace_back(STAR_MASS, Type::SUN, pos_b, vel_b);
+
+        const Vector2 origin;
+        add_body(bodies, Type::PLANET, 10.0, origin, origin, 2.0 * STAR_MASS, 750.0, 0.0, 1.0);
+        add_body(bodies, Type::PLANET, 10.0, origin, origin, 2.0 * STAR_MASS, 950.0, 2.5, 1.0);
+        add_body(bodies, Type::PLANET,  5.0, pos_a, vel_a, STAR_MASS, 60.0, 1.0, 1.0);
+
+        add_to_world(world, bodies);
+    }
+
+
+    // ---- 비교 F4: 천체 300개 ----
+    // 태양, 행성 몇 개, 소행성 약 290개. 시드를 고정해 두 world가 같은 배치로 시작한다.
+    void build_compare_crowd(PhysicsWorld& world)
+    {
+        constexpr double SUN_MASS = 5000.0;
+
+        std::mt19937 gen(20240601);
+
+        std::vector<Particle> bodies;
+        bodies.emplace_back(SUN_MASS, Type::SUN, Vector2(0, 0), Vector2(0, 0));
+
+        const Vector2 origin;
+
+        add_ring(bodies, gen, {Type::GIANT,      2, 500, 650, 120, 200}, origin, origin, SUN_MASS, 1, 0.05);
+        add_ring(bodies, gen, {Type::PLANET,     7, 150, 450,   5,  20}, origin, origin, SUN_MASS, 1, 0.05);
+        add_ring(bodies, gen, {Type::ASTEROID, 290, 200, 480, 0.2, 1.5}, origin, origin, SUN_MASS, 1, 0.10);
+
+        add_to_world(world, bodies);
+    }
+
+}
+
+const std::vector<Scenario>& compare_scenarios()
+{
+    static const std::vector<Scenario> list = {
+        {"Eccentric Orbit",   build_compare_eccentric},
+        {"Mini Solar System", build_compare_solar_system},
+        {"Binary Stars",      build_compare_binary},
+        {"300 Bodies",        build_compare_crowd},
+    };
+
+    return list;
 }
 
 const std::vector<Scenario>& scenarios()

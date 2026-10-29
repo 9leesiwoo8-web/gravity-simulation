@@ -17,11 +17,23 @@ struct CollisionEvent {
     bool fragmented;    // true면 병합이 아니라 파편화
 };
 
+enum class Integrator {
+    VERLET,
+    EULER
+};
+
 class PhysicsWorld {
 private:
     std::vector<Particle> particles;
     double G;
     double softening;
+
+    Integrator integrator = Integrator::VERLET;
+    // true면 충돌(병합·파편화)과 궤도 이탈 제거를 끈다. 에너지가 보존되는 닫힌 계.
+    bool closed_system = false;
+    // false면 입자가 많아도 CPU(double)로만 계산한다. GPU는 힘을 float로 계산해
+    // 적분 방식 간 에너지 오차 비교에 잡음이 섞이기 때문이다.
+    bool gpu_allowed = true;
 
     std::uint64_t next_id = 0;
 
@@ -45,6 +57,16 @@ public:
 
     void add_Particle(const Particle& particle);
 
+    // 오일러는 항상 CPU로만 계산한다.
+    void set_integrator(Integrator integrator);
+    void set_closed_system(bool closed);
+    void set_gpu_allowed(bool allowed);
+
+    double kinetic_energy() const;
+    // Plummer softening 중력과 같은 퍼텐셜: U = -G*m1*m2 / sqrt(|d|^2 + eps^2)
+    double potential_energy() const;
+    double total_energy() const;
+
     void update(double dt);
 
     // update(dt)를 steps번 한 것과 같다. GPU를 쓸 수 있으면 스텝마다 CPU와 주고받지 않고
@@ -55,6 +77,7 @@ public:
     std::vector<CollisionEvent> take_events();
 
 private:
+    void update_euler(double dt);
     void calculate_forces();
     void resolve_collisions();
     void remove_escaped();

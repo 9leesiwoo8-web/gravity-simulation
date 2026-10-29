@@ -6,3 +6,4 @@
 # 에디터 설정
 .vscode/
 .clangd
+energy_*.csv

@@ -12,3 +12,6 @@ struct Scenario {
 
 // F1부터 순서대로 고를 수 있는 시나리오 목록
 const std::vector<Scenario>& scenarios();
+
+// 비교 모드용 시나리오. 난수 없이 항상 같은 배치를 만들고, 천체가 적어 CPU로 충분하다.
+const std::vector<Scenario>& compare_scenarios();

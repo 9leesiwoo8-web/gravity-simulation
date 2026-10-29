@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <unordered_set>
 
@@ -31,6 +32,11 @@ bool Renderer::is_open() const {
 
 void Renderer::clear_trails() {
     trails.clear();
+}
+
+void Renderer::clear_compare_trails() {
+    compare_trails[0].clear();
+    compare_trails[1].clear();
 }
 
 void Renderer::clear_effects() {
@@ -77,22 +83,38 @@ void Renderer::handle_key(sf::Keyboard::Key code, SimControl& control) {
     // F1~F9: 시나리오 선택. 유효한 번호인지는 main이 확인한다.
     const int function_key = static_cast<int>(code) - static_cast<int>(Key::F1);
     if(function_key >= 0 && function_key < 9) {
-        control.scenario = function_key;
+        if(control.mode == Mode::COMPARE) control.compare_scenario = function_key;
+        else control.scenario = function_key;
+
         control.reset_requested = true;
         return;
     }
 
+    int& time_scale =
+        control.mode == Mode::COMPARE ? control.compare_time_scale : control.time_scale;
+
     switch(code) {
+    case Key::Tab:
+        control.mode = control.mode == Mode::SIMULATION ? Mode::COMPARE : Mode::SIMULATION;
+        control.mode_changed = true;
+        launching = false;
+        break;
+    case Key::L:
+        control.log_graph = !control.log_graph;
+        break;
+    case Key::S:
+        if(control.mode == Mode::COMPARE) control.save_requested = true;
+        break;
     case Key::Space:
         control.paused = !control.paused;
         break;
     case Key::Equal:
     case Key::Add:
-        control.time_scale = std::min(control.time_scale * 2, Config::MAX_TIME_SCALE);
+        time_scale = std::min(time_scale * 2, Config::MAX_TIME_SCALE);
         break;
     case Key::Hyphen:
     case Key::Subtract:
-        control.time_scale = std::max(control.time_scale / 2, Config::MIN_TIME_SCALE);
+        time_scale = std::max(time_scale / 2, Config::MIN_TIME_SCALE);
         break;
     case Key::R:
         control.reset_requested = true;
@@ -142,13 +164,29 @@ void Renderer::process_events(SimControl& control) {
         }
 
         if(const auto* scroll = event->getIf<sf::Event::MouseWheelScrolled>()) {
-            zoom_at(scroll->delta > 0 ? Config::ZOOM_IN_FACTOR : Config::ZOOM_OUT_FACTOR,
-                    scroll->position);
+            // 비교 모드는 패널이 둘이라 마우스 위치 기준 확대가 맞지 않아 화면 중앙 기준으로 한다.
+            sf::Vector2i anchor = control.mode == Mode::COMPARE
+                ? sf::Vector2i(window.getSize() / 2u)
+                : scroll->position;
+
+            zoom_at(scroll->delta > 0 ? Config::ZOOM_IN_FACTOR : Config::ZOOM_OUT_FACTOR, anchor);
         }
 
         if(const auto* pressed = event->getIf<sf::Event::MouseButtonPressed>()) {
-            if(pressed->button == sf::Mouse::Button::Left) {
-                launching = true;
+            const sf::Vector2f click(pressed->position);
+
+            if(pressed->button == sf::Mouse::Button::Left &&
+               (mode_button(0).contains(click) || mode_button(1).contains(click))) {
+                Mode target = mode_button(0).contains(click) ? Mode::SIMULATION : Mode::COMPARE;
+
+                if(target != control.mode) {
+                    control.mode = target;
+                    control.mode_changed = true;
+                }
+            }
+            else if(pressed->button == sf::Mouse::Button::Left) {
+                // 비교 모드는 천체를 추가하면 에너지 기준이 깨지므로 발사하지 않는다.
+                launching = control.mode == Mode::SIMULATION;
                 launch_start = window.mapPixelToCoords(pressed->position, view);
                 launch_pixel = pressed->position;
             }
@@ -200,7 +238,7 @@ sf::Color Renderer::color_of(Type type) {
     return sf::Color::Green;
 }
 
-void Renderer::update_trails(const PhysicsWorld& world) {
+void Renderer::update_trails(const PhysicsWorld& world, TrailMap& trails) {
     std::unordered_set<std::uint64_t> alive;
 
     for(const Particle& p : world.get_particles()) {
@@ -226,7 +264,7 @@ void Renderer::update_trails(const PhysicsWorld& world) {
     }
 }
 
-void Renderer::draw_trails(const PhysicsWorld& world) {
+void Renderer::draw_trails(const PhysicsWorld& world, const TrailMap& trails) {
     for(const Particle& p : world.get_particles()) {
         auto it = trails.find(p.get_id());
         if(it == trails.end() || it->second.size() < 2) continue;
@@ -345,8 +383,7 @@ void Renderer::draw_launch_preview(const SimControl& control) {
 void Renderer::draw_hud(const PhysicsWorld& world, const SimControl& control) {
     if(!hud_text) return;
 
-    float dt = fps_clock.restart().asSeconds();
-    if(dt > 0.f) fps = fps * 0.9f + (1.f / dt) * 0.1f;
+    update_fps();
 
     window.setView(sf::View(sf::FloatRect(
         {0.f, 0.f},
@@ -366,24 +403,17 @@ void Renderer::draw_hud(const PhysicsWorld& world, const SimControl& control) {
             preset.name + " (mass " + std::to_string(static_cast<int>(preset.mass)) + ")";
 
     text += "\nF1-F5: scenario   1-4: body type   LMB drag: launch   RMB drag: pan   Wheel: zoom";
-    text += "\nSpace: pause   +/-: speed   R: reset   T: trails   Esc: cancel";
+    text += "\nSpace: pause   +/-: speed   R: reset   T: trails   Esc: cancel   Tab: mode";
 
     hud_text->setString(text);
     window.draw(*hud_text);
 
+    draw_mode_buttons(control);
+
     window.setView(view);
 }
 
-void Renderer::draw(const PhysicsWorld& world, const SimControl& control) {
-    window.clear();
-
-    window.setView(view);
-
-    if(show_trails) {
-        update_trails(world);
-        draw_trails(world);
-    }
-
+void Renderer::draw_bodies(const PhysicsWorld& world) {
     for(const Particle& p : world.get_particles()) {
         // 반지름은 월드 단위. 줌은 view가 처리한다.
         const float size = static_cast<float>(p.get_radius());
@@ -398,6 +428,19 @@ void Renderer::draw(const PhysicsWorld& world, const SimControl& control) {
 
         window.draw(circle);
     }
+}
+
+void Renderer::draw(const PhysicsWorld& world, const SimControl& control) {
+    window.clear();
+
+    window.setView(view);
+
+    if(show_trails) {
+        update_trails(world, trails);
+        draw_trails(world, trails);
+    }
+
+    draw_bodies(world);
 
     draw_effects();
 
@@ -406,4 +449,281 @@ void Renderer::draw(const PhysicsWorld& world, const SimControl& control) {
     draw_hud(world, control);
 
     window.display();
+}
+
+void Renderer::update_fps() {
+    float dt = fps_clock.restart().asSeconds();
+    if(dt > 0.f) fps = fps * 0.9f + (1.f / dt) * 0.1f;
+}
+
+void Renderer::draw_text(const std::string& text, sf::Vector2f position, sf::Color color,
+                         unsigned size, bool right_align) {
+    if(!hud_text) return;
+
+    sf::Text label(font, text, size);
+    label.setFillColor(color);
+
+    if(right_align) position.x -= label.getLocalBounds().size.x;
+    label.setPosition(position);
+
+    window.draw(label);
+}
+
+// 창 오른쪽 위의 모드 버튼. 0: 시뮬레이션, 1: 비교. 화면 좌표(픽셀)로 그린다.
+sf::FloatRect Renderer::mode_button(int index) const {
+    constexpr float WIDTH = 120.f;
+    constexpr float HEIGHT = 26.f;
+    constexpr float GAP = 6.f;
+
+    const float right = static_cast<float>(window.getSize().x) - 10.f;
+    const float x = right - (2 - index) * WIDTH - (1 - index) * GAP;
+
+    return sf::FloatRect({x, 8.f}, {WIDTH, HEIGHT});
+}
+
+void Renderer::draw_mode_buttons(const SimControl& control) {
+    const char* names[2] = {"Simulation", "Compare"};
+
+    for(int i = 0; i < 2; i++) {
+        const sf::FloatRect rect = mode_button(i);
+        const bool active = (control.mode == Mode::SIMULATION) == (i == 0);
+
+        sf::RectangleShape box(rect.size);
+        box.setPosition(rect.position);
+        box.setFillColor(active ? sf::Color(50, 110, 70) : sf::Color(30, 30, 30));
+        box.setOutlineThickness(1.f);
+        box.setOutlineColor(active ? sf::Color(120, 220, 150) : sf::Color(90, 90, 90));
+        window.draw(box);
+
+        // 글자를 버튼 가운데에 맞춘다.
+        if(!hud_text) continue;
+
+        sf::Text label(font, names[i], 14);
+        label.setFillColor(active ? sf::Color::White : sf::Color(160, 160, 160));
+
+        const sf::FloatRect bounds = label.getLocalBounds();
+        label.setPosition({
+            rect.position.x + (rect.size.x - bounds.size.x) * 0.5f - bounds.position.x,
+            rect.position.y + 4.f
+        });
+        window.draw(label);
+    }
+}
+
+namespace {
+    const sf::Color EULER_COLOR(255, 150, 50);
+    const sf::Color VERLET_COLOR(90, 220, 140);
+
+    std::string format_percent(double relative) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%+.4g%%", relative * 100.0);
+        return buf;
+    }
+}
+
+// 비교 모드: 위쪽에 같은 배치를 오일러(왼쪽)와 Verlet(오른쪽)으로 계산한 모습,
+// 아래쪽에 두 방식의 역학적 에너지 오차 그래프.
+void Renderer::draw_compare(const PhysicsWorld& euler, const PhysicsWorld& verlet,
+                            const EnergyLog& log, const SimControl& control) {
+    window.clear();
+
+    const sf::Vector2f win(window.getSize());
+    const float panel_ratio = 1.f - Config::COMPARE_GRAPH_HEIGHT_RATIO;
+    const PhysicsWorld* worlds[2] = {&euler, &verlet};
+
+    for(int i = 0; i < 2; i++) {
+        sf::View panel(view.getCenter(), {win.x * 0.5f / scale, win.y * panel_ratio / scale});
+        panel.setViewport(sf::FloatRect({0.5f * i, 0.f}, {0.5f, panel_ratio}));
+        window.setView(panel);
+
+        if(show_trails) {
+            update_trails(*worlds[i], compare_trails[i]);
+            draw_trails(*worlds[i], compare_trails[i]);
+        }
+
+        draw_bodies(*worlds[i]);
+    }
+
+    window.setView(sf::View(sf::FloatRect({0.f, 0.f}, win)));
+    draw_compare_overlay(log, control);
+
+    window.setView(view);
+    window.display();
+}
+
+void Renderer::draw_compare_overlay(const EnergyLog& log, const SimControl& control) {
+    const sf::Vector2f win(window.getSize());
+    const float panel_bottom = win.y * (1.f - Config::COMPARE_GRAPH_HEIGHT_RATIO);
+
+    update_fps();
+
+    // 패널 경계선
+    const sf::Color border(80, 80, 80);
+    const sf::Vertex lines[4] = {
+        sf::Vertex{{win.x * 0.5f, 0.f}, border},
+        sf::Vertex{{win.x * 0.5f, panel_bottom}, border},
+        sf::Vertex{{0.f, panel_bottom}, border},
+        sf::Vertex{{win.x, panel_bottom}, border}
+    };
+    window.draw(lines, 4, sf::PrimitiveType::Lines);
+
+    const EnergySample& now = log.get_latest();
+
+    char dt_text[16];
+    std::snprintf(dt_text, sizeof(dt_text), "%g", Config::COMPARE_DT);
+
+    std::string head =
+        "[" + control.compare_scenario_name + "]   " +
+        "dt: " + dt_text +
+        "   Speed: x" + std::to_string(control.compare_time_scale) +
+        "   t: " + std::to_string(static_cast<int>(now.time)) +
+        "   FPS: " + std::to_string(static_cast<int>(fps + 0.5f));
+
+    if(control.paused) head += "   [PAUSED]";
+
+    head += "\nF1-F4: scenario   RMB drag: pan   Wheel: zoom   Space: pause   +/-: speed";
+    head += "\nR: reset   T: trails   L: log graph   S: save CSV   Tab: mode";
+
+    if(hud_text) {
+        hud_text->setString(head);
+        window.draw(*hud_text);
+    }
+
+    draw_text("EULER   dE/|E0| = " + format_percent(now.euler),
+              {10.f, 62.f}, EULER_COLOR, 16);
+    draw_text("VERLET  dE/|E0| = " + format_percent(now.verlet),
+              {win.x * 0.5f + 10.f, 62.f}, VERLET_COLOR, 16);
+
+    draw_mode_buttons(control);
+
+    if(control.status_frames > 0) {
+        draw_text(control.status_message, {win.x - 10.f, 40.f}, sf::Color(255, 230, 120), 14, true);
+    }
+
+    draw_energy_graph(log, control,
+        sf::FloatRect({70.f, panel_bottom + 34.f}, {win.x - 90.f, win.y - panel_bottom - 64.f}));
+}
+
+// 두 방식의 에너지 상대 오차를 한 그래프에 겹쳐 그린다.
+// 선형 눈금은 부호가 있는 오차(%), 로그 눈금은 오차 크기의 상용로그.
+void Renderer::draw_energy_graph(const EnergyLog& log, const SimControl& control,
+                                 sf::FloatRect area) {
+    const auto& samples = log.get_samples();
+    const bool use_log = control.log_graph;
+
+    draw_text(use_log ? "Total energy error  log10 |E - E0| / |E0|"
+                      : "Total energy error  (E - E0) / |E0|  [%]",
+              {area.position.x, area.position.y - 24.f}, sf::Color(200, 200, 200));
+    draw_text("Euler", {area.position.x + area.size.x - 90.f, area.position.y - 24.f},
+              EULER_COLOR, 14, true);
+    draw_text("Verlet", {area.position.x + area.size.x, area.position.y - 24.f},
+              VERLET_COLOR, 14, true);
+
+    sf::RectangleShape frame(area.size);
+    frame.setPosition(area.position);
+    frame.setFillColor(sf::Color(18, 18, 18));
+    frame.setOutlineThickness(1.f);
+    frame.setOutlineColor(sf::Color(100, 100, 100));
+    window.draw(frame);
+
+    if(samples.size() < 2) return;
+
+    auto transform = [&](double relative) {
+        if(use_log) return std::log10(std::max(std::abs(relative), 1e-12));
+        return relative * 100.0;
+    };
+
+    double y_min = transform(samples.front().euler);
+    double y_max = y_min;
+
+    for(const EnergySample& s : samples) {
+        for(double v : {transform(s.euler), transform(s.verlet)}) {
+            y_min = std::min(y_min, v);
+            y_max = std::max(y_max, v);
+        }
+    }
+
+    // 눈금 값과 그 라벨
+    std::vector<std::pair<double, std::string>> ticks;
+    char buf[32];
+
+    if(use_log) {
+        y_min = std::floor(y_min);
+        y_max = std::ceil(y_max);
+        if(y_max - y_min < 1.0) y_max = y_min + 1.0;
+
+        const int step = std::max(1, static_cast<int>(std::ceil((y_max - y_min) / 5.0)));
+        for(double d = y_min; d <= y_max + 1e-9; d += step) {
+            std::snprintf(buf, sizeof(buf), "1e%+d", static_cast<int>(d));
+            ticks.emplace_back(d, buf);
+        }
+    }
+    else {
+        // 0을 포함하고 위아래로 여유를 둔다.
+        y_min = std::min(y_min, 0.0);
+        y_max = std::max(y_max, 0.0);
+        const double pad = std::max((y_max - y_min) * 0.1, 1e-9);
+        y_min -= pad;
+        y_max += pad;
+
+        for(int k = 0; k <= 4; k++) {
+            const double v = y_min + (y_max - y_min) * k / 4.0;
+            std::snprintf(buf, sizeof(buf), "%+.3g", v);
+            ticks.emplace_back(v, buf);
+        }
+    }
+
+    const double t_max = std::max(samples.back().time, 1e-9);
+
+    auto to_screen = [&](double t, double y) {
+        return sf::Vector2f(
+            area.position.x + static_cast<float>(t / t_max) * area.size.x,
+            area.position.y + area.size.y -
+                static_cast<float>((y - y_min) / (y_max - y_min)) * area.size.y
+        );
+    };
+
+    for(const auto& tick : ticks) {
+        const sf::Vector2f left = to_screen(0.0, tick.first);
+
+        const sf::Color grid(60, 60, 60);
+        const sf::Vertex line[2] = {
+            sf::Vertex{left, grid},
+            sf::Vertex{{left.x + area.size.x, left.y}, grid}
+        };
+        window.draw(line, 2, sf::PrimitiveType::Lines);
+
+        draw_text(tick.second, {area.position.x - 6.f, left.y - 9.f},
+                  sf::Color(160, 160, 160), 12, true);
+    }
+
+    // 선형 눈금의 0 기준선 (E = E0)
+    if(!use_log) {
+        const sf::Vector2f zero = to_screen(0.0, 0.0);
+        const sf::Color c(140, 140, 140);
+        const sf::Vertex line[2] = {
+            sf::Vertex{zero, c},
+            sf::Vertex{{zero.x + area.size.x, zero.y}, c}
+        };
+        window.draw(line, 2, sf::PrimitiveType::Lines);
+    }
+
+    draw_text("t = 0", {area.position.x, area.position.y + area.size.y + 4.f},
+              sf::Color(160, 160, 160), 12);
+    std::snprintf(buf, sizeof(buf), "t = %.1f", t_max);
+    draw_text(buf, {area.position.x + area.size.x, area.position.y + area.size.y + 4.f},
+              sf::Color(160, 160, 160), 12, true);
+
+    sf::VertexArray euler_line(sf::PrimitiveType::LineStrip, samples.size());
+    sf::VertexArray verlet_line(sf::PrimitiveType::LineStrip, samples.size());
+
+    for(std::size_t i = 0; i < samples.size(); i++) {
+        euler_line[i].position = to_screen(samples[i].time, transform(samples[i].euler));
+        euler_line[i].color = EULER_COLOR;
+        verlet_line[i].position = to_screen(samples[i].time, transform(samples[i].verlet));
+        verlet_line[i].color = VERLET_COLOR;
+    }
+
+    window.draw(euler_line);
+    window.draw(verlet_line);
 }

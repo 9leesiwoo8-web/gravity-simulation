@@ -62,4 +62,7 @@ public:
     void refresh_acceleration();
     void advance_position(double dt);
     void advance_velocity(double dt);
+
+    // 명시적 오일러 적분 (비교용)
+    void advance_euler(double dt);
 };

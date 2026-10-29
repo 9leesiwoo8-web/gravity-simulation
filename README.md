@@ -9,6 +9,7 @@
 - 충돌 시 질량·운동량·질량중심을 보존하며 병합 또는 파편화
 - 입자 128개 이상이면 GPU(OpenCL)에서 여러 스텝을 연속으로 계산, 그보다 적거나 GPU를 쓸 수 없으면 CPU로 계산
 - SFML 렌더링: 궤적, 충돌 이펙트, HUD
+- 모드 두 가지: **Simulation**(기본)과 **Compare**(같은 배치를 오일러와 Verlet으로 동시에 계산하고 역학적 에너지 오차 그래프를 비교)
 
 ## 바로 실행하기 (빌드 없이)
 
@@ -55,6 +56,23 @@ PowerShell에서 `main.exe`를 직접 실행하려면 `C:\msys64\mingw64\bin`이
 | R | 현재 시나리오 다시 시작 |
 | T | 궤적 켜기/끄기 |
 | Esc | 발사 취소 |
+| Tab 또는 오른쪽 위 버튼 | Simulation / Compare 모드 전환 |
+
+### Compare 모드
+
+왼쪽은 오일러, 오른쪽은 Verlet으로 같은 시작 배치를 계산하고, 아래 그래프에 총 역학적 에너지의 상대 오차
+`(E - E0) / |E0|`를 겹쳐 그린다. 에너지 변화의 원인을 적분 방식 하나로 좁히기 위해 충돌과 궤도 이탈 제거는 끄고,
+천체 추가(발사)도 막는다. 두 쪽 모두 CPU(double)로만 계산한다 (GPU는 힘을 float로 계산해 에너지 비교에 잡음이 섞인다). 스텝은 `Config::COMPARE_DT`(0.01)로 시뮬레이션 모드보다 크다.
+
+| 입력 | 동작 |
+|---|---|
+| F1 ~ F4 | 비교 시나리오 (타원 궤도, 작은 태양계, 쌍성계, 천체 300개) |
+| L | 그래프 y축 선형(%) / 로그 전환 (Verlet의 작은 오차를 보려면 로그) |
+| R | 처음부터 다시 시작 |
+| S | 지금까지의 에너지 기록을 CSV로 저장 (실행한 폴더에 `energy_<시나리오>_<날짜>_<시각>.csv`) |
+| Space, `+`/`-`, T, 오른쪽 드래그, 휠 | 시뮬레이션 모드와 같음 |
+
+모드를 바꿔도 반대쪽 모드의 상태는 그대로 남는다.
 
 ## 구조
 
@@ -62,9 +80,9 @@ PowerShell에서 `main.exe`를 직접 실행하려면 `C:\msys64\mingw64\bin`이
 Main/       프로그램 시작점, 메인 루프
 Config/     조절 값 (G, 시간 스텝, GPU 임계값, 창·카메라 등)
 Math/       Vector2
-Physics/    Particle, PhysicsWorld(충돌·CPU 계산), GpuGravity(OpenCL)
+Physics/    Particle, PhysicsWorld(충돌·CPU 계산·에너지), GpuGravity(OpenCL), EnergyLog(비교 그래프 기록)
 Renderer/   SFML 창, 입력, 그리기
-Scenario/   시작 배치 5종
+Scenario/   시작 배치 5종 + 비교 모드용 4종
 ```
 
 ## 조절할 수 있는 값 (`Config/Config.h`)

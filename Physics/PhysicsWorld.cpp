@@ -32,6 +32,50 @@ void PhysicsWorld::add_Particle(const Particle& particle) {
     accel_dirty = true;
 }
 
+void PhysicsWorld::set_integrator(Integrator integrator) {
+    this->integrator = integrator;
+    accel_dirty = true;
+}
+
+void PhysicsWorld::set_closed_system(bool closed) {
+    closed_system = closed;
+}
+
+void PhysicsWorld::set_gpu_allowed(bool allowed) {
+    gpu_allowed = allowed;
+}
+
+double PhysicsWorld::kinetic_energy() const {
+    double sum = 0.0;
+
+    for(const Particle& p : particles) {
+        sum += 0.5 * p.get_mass() * p.get_velocity().length_squared();
+    }
+
+    return sum;
+}
+
+double PhysicsWorld::potential_energy() const {
+    const double eps_sq = softening * softening;
+    double sum = 0.0;
+
+    for(size_t i = 0; i < particles.size(); i++) {
+        for(size_t j = i + 1; j < particles.size(); j++) {
+            double dist_sq =
+                (particles[j].get_position() - particles[i].get_position()).length_squared();
+
+            sum -= G * particles[i].get_mass() * particles[j].get_mass() /
+                   std::sqrt(dist_sq + eps_sq);
+        }
+    }
+
+    return sum;
+}
+
+double PhysicsWorld::total_energy() const {
+    return kinetic_energy() + potential_energy();
+}
+
 std::vector<CollisionEvent> PhysicsWorld::take_events() {
     std::vector<CollisionEvent> taken;
     taken.swap(events);
@@ -41,6 +85,11 @@ std::vector<CollisionEvent> PhysicsWorld::take_events() {
 // 속도 Verlet:
 //   1) 위치 갱신  2) 새 위치에서 힘 재계산  3) 속도 갱신
 void PhysicsWorld::update(double dt) {
+    if(integrator == Integrator::EULER) {
+        update_euler(dt);
+        return;
+    }
+
     if(accel_dirty) {
         calculate_forces();
 
@@ -65,6 +114,22 @@ void PhysicsWorld::update(double dt) {
     remove_escaped();
 }
 
+// 명시적 오일러: 현재 위치의 힘으로 가속도를 구해 위치와 속도를 함께 갱신한다.
+void PhysicsWorld::update_euler(double dt) {
+    calculate_forces();
+
+    for(auto& p : particles) {
+        p.refresh_acceleration();
+        p.advance_euler(dt);
+    }
+
+    resolve_collisions();
+    remove_escaped();
+
+    // 저장된 가속도는 이전 위치 기준이므로 다음에 Verlet으로 바꾸면 다시 구해야 한다.
+    accel_dirty = true;
+}
+
 // GPU 한 번 호출에 묶는 최대 스텝 수 (한 번의 제출이 너무 길어지지 않게 한다)
 namespace {
     constexpr int MAX_GPU_BATCH = 256;
@@ -72,7 +137,7 @@ namespace {
 
 void PhysicsWorld::update(double dt, int steps) {
     while(steps > 0) {
-        bool use_gpu = gpu && gpu->available() && particles.size() >= Config::GPU_MIN_PARTICLES;
+        bool use_gpu = integrator == Integrator::VERLET && gpu_allowed && gpu && gpu->available() && particles.size() >= Config::GPU_MIN_PARTICLES;
 
         if(use_gpu) {
             int done = 0;
@@ -195,6 +260,8 @@ void PhysicsWorld::resolve_collisions() {
     if(!collision_pending) return;
     collision_pending = false;
 
+    if(closed_system) return;
+
     std::vector<bool> removed(particles.size(), false);
     std::vector<Particle> fragments;
     bool changed = false;
@@ -265,7 +332,7 @@ void PhysicsWorld::resolve_collisions() {
 
 // 질량중심에서 너무 멀리 날아간 입자를 제거한다.
 void PhysicsWorld::remove_escaped() {
-    if(particles.empty()) return;
+    if(closed_system || particles.empty()) return;
 
     double total_mass = 0.0;
     Vector2 center;

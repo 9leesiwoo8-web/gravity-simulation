@@ -71,3 +71,11 @@ void Particle::advance_velocity(double dt) {
 
     clear_force();
 }
+
+// 명시적 오일러: 현재 속도와 현재 가속도만으로 한 스텝 나아간다.
+//   x(t+dt) = x + v*dt,  v(t+dt) = v + a(t)*dt
+// 에너지가 스텝마다 조금씩 늘어나 궤도가 바깥으로 벌어진다.
+void Particle::advance_euler(double dt) {
+    position += velocity * dt;
+    velocity += acceleration * dt;
+}

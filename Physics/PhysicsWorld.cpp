@@ -82,8 +82,6 @@ std::vector<CollisionEvent> PhysicsWorld::take_events() {
     return taken;
 }
 
-// 속도 Verlet:
-//   1) 위치 갱신  2) 새 위치에서 힘 재계산  3) 속도 갱신
 void PhysicsWorld::update(double dt) {
     if(integrator == Integrator::EULER) {
         update_euler(dt);
@@ -114,7 +112,6 @@ void PhysicsWorld::update(double dt) {
     remove_escaped();
 }
 
-// 명시적 오일러: 현재 위치의 힘으로 가속도를 구해 위치와 속도를 함께 갱신한다.
 void PhysicsWorld::update_euler(double dt) {
     calculate_forces();
 
@@ -126,11 +123,9 @@ void PhysicsWorld::update_euler(double dt) {
     resolve_collisions();
     remove_escaped();
 
-    // 저장된 가속도는 이전 위치 기준이므로 다음에 Verlet으로 바꾸면 다시 구해야 한다.
     accel_dirty = true;
 }
 
-// GPU 한 번 호출에 묶는 최대 스텝 수 (한 번의 제출이 너무 길어지지 않게 한다)
 namespace {
     constexpr int MAX_GPU_BATCH = 256;
 }
@@ -143,13 +138,11 @@ void PhysicsWorld::update(double dt, int steps) {
             int done = 0;
             bool hit = false;
 
-            // 가속도가 낡았으면 GPU가 먼저 새로 구한다 (update()의 첫 부분과 같다)
             if(gpu->advance(particles, dt, std::min(steps, MAX_GPU_BATCH), G, softening * softening,
                             accel_dirty, Config::GPU_COLLISION_DELAY_STEPS, done, hit)) {
                 accel_dirty = false;
                 steps -= done;
 
-                // 겹침이 생기고 몇 스텝 뒤에 GPU가 멈췄다. 이후는 update()와 같다.
                 if(hit) collision_pending = true;
                 resolve_collisions();
                 remove_escaped();
@@ -162,8 +155,6 @@ void PhysicsWorld::update(double dt, int steps) {
     }
 }
 
-// Plummer softening: F = G*m1*m2*d / (|d|^2 + eps^2)^(3/2)
-// 가까이 지나갈 때 힘이 무한대로 발산하는 것을 막는다.
 void PhysicsWorld::calculate_forces() {
     const double eps_sq = softening * softening;
 
@@ -192,8 +183,6 @@ void PhysicsWorld::calculate_forces() {
     }
 }
 
-// 충돌 속도가 합쳐진 천체의 탈출 속도에 비해 충분히 크고,
-// 두 천체의 질량이 비슷하면 합쳐지지 않고 파편으로 부서진다.
 bool PhysicsWorld::should_fragment(const Particle& a, const Particle& b) const {
     double heavy = std::max(a.get_mass(), b.get_mass());
     double light = std::min(a.get_mass(), b.get_mass());
@@ -210,8 +199,6 @@ bool PhysicsWorld::should_fragment(const Particle& a, const Particle& b) const {
     return relative_speed > Config::FRAGMENT_SPEED_FACTOR * escape_speed;
 }
 
-// 두 천체의 질량, 운동량, 질량중심을 보존하면서 질량을 균등하게 나눈 파편을 만든다.
-// 파편은 질량중심 둘레에 대칭으로 놓고 바깥쪽으로 같은 속도를 줘서 운동량이 유지된다.
 void PhysicsWorld::spawn_fragments(const Particle& a, const Particle& b, double touch,
                                    std::vector<Particle>& out) {
     const double total = a.get_mass() + b.get_mass();
@@ -225,10 +212,8 @@ void PhysicsWorld::spawn_fragments(const Particle& a, const Particle& b, double 
     double relative_speed = (a.get_velocity() - b.get_velocity()).length();
     double outward_speed = Config::FRAGMENT_SPREAD_FACTOR * relative_speed;
 
-    // 더 작은 쪽 등급을 물려받는다.
     Type type = a.rank() <= b.rank() ? a.get_type() : b.get_type();
 
-    // 파편끼리 생성 즉시 다시 충돌하지 않도록 고리 반지름을 정한다.
     double fragment_radius =
         Particle(fragment_mass, type, Vector2(), Vector2()).get_radius();
     double ring = std::max(
@@ -255,7 +240,6 @@ void PhysicsWorld::spawn_fragments(const Particle& a, const Particle& b, double 
     events.push_back({center, touch * 0.5, type, true});
 }
 
-// 반지름이 겹치는 입자를 병합하거나 파편화한다. 어느 쪽이든 운동량과 질량중심을 보존한다.
 void PhysicsWorld::resolve_collisions() {
     if(!collision_pending) return;
     collision_pending = false;
@@ -330,7 +314,6 @@ void PhysicsWorld::resolve_collisions() {
     accel_dirty = true;
 }
 
-// 질량중심에서 너무 멀리 날아간 입자를 제거한다.
 void PhysicsWorld::remove_escaped() {
     if(closed_system || particles.empty()) return;
 

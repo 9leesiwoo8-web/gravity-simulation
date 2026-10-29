@@ -16,7 +16,6 @@ Particle::Particle(double mass, Type type, const Vector2& position, const Vector
     update_radius();
 }
 
-// 반지름은 질량이 바뀔 때만 다시 계산한다 (충돌 판정에서 매번 cbrt를 부르지 않도록)
 void Particle::update_radius() {
     radius = Config::RADIUS_BASE + Config::RADIUS_PER_CBRT_MASS * std::cbrt(mass);
 }
@@ -51,18 +50,15 @@ void Particle::set_velocity(const Vector2& velocity) {
     this->velocity = velocity;
 }
 
-// 현재 누적된 힘으로 가속도를 초기화한다 (첫 스텝, 병합 직후에 사용)
 void Particle::refresh_acceleration() {
     acceleration = force / mass;
     clear_force();
 }
 
-// x(t+dt) = x + v*dt + 0.5*a(t)*dt^2
 void Particle::advance_position(double dt) {
     position += velocity * dt + acceleration * (0.5 * dt * dt);
 }
 
-// v(t+dt) = v + 0.5*(a(t) + a(t+dt))*dt
 void Particle::advance_velocity(double dt) {
     Vector2 new_acceleration = force / mass;
 
@@ -72,9 +68,6 @@ void Particle::advance_velocity(double dt) {
     clear_force();
 }
 
-// 명시적 오일러: 현재 속도와 현재 가속도만으로 한 스텝 나아간다.
-//   x(t+dt) = x + v*dt,  v(t+dt) = v + a(t)*dt
-// 에너지가 스텝마다 조금씩 늘어나 궤도가 바깥으로 벌어진다.
 void Particle::advance_euler(double dt) {
     position += velocity * dt;
     velocity += acceleration * dt;

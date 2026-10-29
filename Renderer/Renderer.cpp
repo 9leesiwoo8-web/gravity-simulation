@@ -64,7 +64,6 @@ void Renderer::update_view_size() {
     window.setView(view);
 }
 
-// 마우스 아래의 월드 좌표가 줌 전후로 같은 위치에 오도록 한다.
 void Renderer::zoom_at(float factor, sf::Vector2i pixel) {
     sf::Vector2f before = window.mapPixelToCoords(pixel, view);
 
@@ -80,7 +79,6 @@ void Renderer::zoom_at(float factor, sf::Vector2i pixel) {
 void Renderer::handle_key(sf::Keyboard::Key code, SimControl& control) {
     using Key = sf::Keyboard::Key;
 
-    // F1~F9: 시나리오 선택. 유효한 번호인지는 main이 확인한다.
     const int function_key = static_cast<int>(code) - static_cast<int>(Key::F1);
     if(function_key >= 0 && function_key < 9) {
         if(control.mode == Mode::COMPARE) control.compare_scenario = function_key;
@@ -164,7 +162,6 @@ void Renderer::process_events(SimControl& control) {
         }
 
         if(const auto* scroll = event->getIf<sf::Event::MouseWheelScrolled>()) {
-            // 비교 모드는 패널이 둘이라 마우스 위치 기준 확대가 맞지 않아 화면 중앙 기준으로 한다.
             sf::Vector2i anchor = control.mode == Mode::COMPARE
                 ? sf::Vector2i(window.getSize() / 2u)
                 : scroll->position;
@@ -185,7 +182,6 @@ void Renderer::process_events(SimControl& control) {
                 }
             }
             else if(pressed->button == sf::Mouse::Button::Left) {
-                // 비교 모드는 천체를 추가하면 에너지 기준이 깨지므로 발사하지 않는다.
                 launching = control.mode == Mode::SIMULATION;
                 launch_start = window.mapPixelToCoords(pressed->position, view);
                 launch_pixel = pressed->position;
@@ -251,7 +247,6 @@ void Renderer::update_trails(const PhysicsWorld& world, TrailMap& trails) {
 
         auto& trail = trails[p.get_id()];
 
-        // 일시정지 중에는 같은 점이 쌓이지 않도록 한다.
         if(!trail.empty() && trail.back() == pos) continue;
 
         trail.push_back(pos);
@@ -274,7 +269,6 @@ void Renderer::draw_trails(const PhysicsWorld& world, const TrailMap& trails) {
 
         sf::VertexArray line(sf::PrimitiveType::LineStrip, trail.size());
         for(std::size_t i = 0; i < trail.size(); i++) {
-            // 오래된 점일수록 투명하게
             float t = static_cast<float>(i) / static_cast<float>(trail.size() - 1);
             sf::Color c = base;
             c.a = static_cast<std::uint8_t>(10 + 110 * t);
@@ -287,9 +281,8 @@ void Renderer::draw_trails(const PhysicsWorld& world, const TrailMap& trails) {
     }
 }
 
-// 충돌 이펙트: 퍼져 나가며 사라지는 링. 파편화는 섬광과 불꽃이 더해진다.
 void Renderer::draw_effects() {
-    const float line_width = 2.f / scale;   // 줌과 상관없이 화면에서 일정한 굵기
+    const float line_width = 2.f / scale;
 
     for(Effect& e : effects) {
         float t = static_cast<float>(e.age) / static_cast<float>(e.life);
@@ -308,7 +301,6 @@ void Renderer::draw_effects() {
         ring.setOutlineColor(ring_color);
         window.draw(ring);
 
-        // 충돌 직후의 짧은 섬광
         if(t < 0.3f) {
             float flash_fade = 1.f - t / 0.3f;
             float flash_radius = e.radius * (1.f + 2.f * t);
@@ -321,7 +313,6 @@ void Renderer::draw_effects() {
             window.draw(flash);
         }
 
-        // 파편화: 사방으로 튀는 불꽃
         if(e.fragmented) {
             constexpr int SPARKS = 8;
             constexpr float PI = 3.14159265f;
@@ -354,7 +345,6 @@ void Renderer::draw_effects() {
     );
 }
 
-// 발사 전 조준선: 시작점에 생성될 천체와 드래그 방향 선
 void Renderer::draw_launch_preview(const SimControl& control) {
     const Config::SpawnPreset& preset = Config::SPAWN_PRESETS[control.spawn_slot - 1];
 
@@ -415,7 +405,6 @@ void Renderer::draw_hud(const PhysicsWorld& world, const SimControl& control) {
 
 void Renderer::draw_bodies(const PhysicsWorld& world) {
     for(const Particle& p : world.get_particles()) {
-        // 반지름은 월드 단위. 줌은 view가 처리한다.
         const float size = static_cast<float>(p.get_radius());
 
         sf::CircleShape circle(size);
@@ -469,7 +458,6 @@ void Renderer::draw_text(const std::string& text, sf::Vector2f position, sf::Col
     window.draw(label);
 }
 
-// 창 오른쪽 위의 모드 버튼. 0: 시뮬레이션, 1: 비교. 화면 좌표(픽셀)로 그린다.
 sf::FloatRect Renderer::mode_button(int index) const {
     constexpr float WIDTH = 120.f;
     constexpr float HEIGHT = 26.f;
@@ -495,7 +483,6 @@ void Renderer::draw_mode_buttons(const SimControl& control) {
         box.setOutlineColor(active ? sf::Color(120, 220, 150) : sf::Color(90, 90, 90));
         window.draw(box);
 
-        // 글자를 버튼 가운데에 맞춘다.
         if(!hud_text) continue;
 
         sf::Text label(font, names[i], 14);
@@ -521,8 +508,6 @@ namespace {
     }
 }
 
-// 비교 모드: 위쪽에 같은 배치를 오일러(왼쪽)와 Verlet(오른쪽)으로 계산한 모습,
-// 아래쪽에 두 방식의 역학적 에너지 오차 그래프.
 void Renderer::draw_compare(const PhysicsWorld& euler, const PhysicsWorld& verlet,
                             const EnergyLog& log, const SimControl& control) {
     window.clear();
@@ -557,7 +542,6 @@ void Renderer::draw_compare_overlay(const EnergyLog& log, const SimControl& cont
 
     update_fps();
 
-    // 패널 경계선
     const sf::Color border(80, 80, 80);
     const sf::Vertex lines[4] = {
         sf::Vertex{{win.x * 0.5f, 0.f}, border},
@@ -604,8 +588,6 @@ void Renderer::draw_compare_overlay(const EnergyLog& log, const SimControl& cont
         sf::FloatRect({70.f, panel_bottom + 34.f}, {win.x - 90.f, win.y - panel_bottom - 64.f}));
 }
 
-// 두 방식의 에너지 상대 오차를 한 그래프에 겹쳐 그린다.
-// 선형 눈금은 부호가 있는 오차(%), 로그 눈금은 오차 크기의 상용로그.
 void Renderer::draw_energy_graph(const EnergyLog& log, const SimControl& control,
                                  sf::FloatRect area) {
     const auto& samples = log.get_samples();
@@ -643,7 +625,6 @@ void Renderer::draw_energy_graph(const EnergyLog& log, const SimControl& control
         }
     }
 
-    // 눈금 값과 그 라벨
     std::vector<std::pair<double, std::string>> ticks;
     char buf[32];
 
@@ -659,7 +640,6 @@ void Renderer::draw_energy_graph(const EnergyLog& log, const SimControl& control
         }
     }
     else {
-        // 0을 포함하고 위아래로 여유를 둔다.
         y_min = std::min(y_min, 0.0);
         y_max = std::max(y_max, 0.0);
         const double pad = std::max((y_max - y_min) * 0.1, 1e-9);
@@ -697,7 +677,6 @@ void Renderer::draw_energy_graph(const EnergyLog& log, const SimControl& control
                   sf::Color(160, 160, 160), 12, true);
     }
 
-    // 선형 눈금의 0 기준선 (E = E0)
     if(!use_log) {
         const sf::Vector2f zero = to_screen(0.0, 0.0);
         const sf::Color c(140, 140, 140);

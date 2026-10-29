@@ -13,42 +13,37 @@
 #include <unordered_map>
 #include <vector>
 
-// 창의 모드. 시뮬레이션은 평소 화면, 비교는 오일러와 Verlet의 에너지를 나란히 본다.
 enum class Mode {
     SIMULATION,
     COMPARE
 };
 
-// 사용자 입력으로 바뀌는 시뮬레이션 상태
 struct SimControl {
     Mode mode = Mode::SIMULATION;
-    bool mode_changed = false;                      // main이 처리하면 false로 돌린다
+    bool mode_changed = false;
 
     bool paused = false;
-    int time_scale = Config::DEFAULT_TIME_SCALE;    // 프레임당 물리 스텝 수
+    int time_scale = Config::DEFAULT_TIME_SCALE;
     int compare_time_scale = Config::COMPARE_DEFAULT_TIME_SCALE;
 
-    // 비교 모드의 시나리오 (F1~F3)와 그래프 y축 로그 눈금
     int compare_scenario = 0;
     std::string compare_scenario_name;
     bool log_graph = false;
 
-    bool save_requested = false;                    // S: 에너지 기록을 CSV로 저장
-    std::string status_message;                     // 화면에 잠깐 보여 줄 안내 (저장 결과 등)
-    int status_frames = 0;                          // 남은 표시 프레임 수
+    bool save_requested = false;
+    std::string status_message;
+    int status_frames = 0;
 
-    // 시나리오 선택 (F1~F9). 번호는 0부터 시작한다.
     int scenario = 0;
     std::string scenario_name;
-    bool reset_requested = false;                   // 현재 시나리오를 처음부터 다시 시작
+    bool reset_requested = false;
 
-    int spawn_slot = Config::DEFAULT_SPAWN_SLOT;    // SPAWN_PRESETS 인덱스 + 1
+    int spawn_slot = Config::DEFAULT_SPAWN_SLOT;
     bool spawn_requested = false;
     Vector2 spawn_position;
     Vector2 spawn_velocity;
 };
 
-// 충돌 순간에 퍼져 나가는 링 형태의 이펙트
 struct Effect {
     sf::Vector2f position;
     float radius;
@@ -65,9 +60,9 @@ private:
     sf::Vector2f base_size;
     sf::View view;
     sf::Vector2f drag_start;
-    bool dragging = false;          // 오른쪽 버튼으로 화면 이동 중
+    bool dragging = false;
 
-    bool launching = false;         // 왼쪽 버튼으로 천체 발사 조준 중
+    bool launching = false;
     sf::Vector2f launch_start;
     sf::Vector2i launch_pixel;
 
@@ -77,7 +72,7 @@ private:
 
     bool show_trails = true;
     TrailMap trails;
-    TrailMap compare_trails[2];     // 0: 오일러, 1: Verlet
+    TrailMap compare_trails[2];
 
     sf::Font font;
     std::optional<sf::Text> hud_text;

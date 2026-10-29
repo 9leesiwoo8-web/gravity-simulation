@@ -8,12 +8,10 @@
 #include <ctime>
 #include <string>
 
-// 선택된 시나리오로 world를 새로 만든다.
 static void load_scenario(PhysicsWorld& world, Renderer& renderer, SimControl& control)
 {
     const std::vector<Scenario>& list = scenarios();
 
-    // 없는 번호의 F 키를 눌렀다면 첫 번째 시나리오로 돌아간다.
     if(control.scenario < 0 || control.scenario >= static_cast<int>(list.size()))
     {
         control.scenario = 0;
@@ -31,8 +29,6 @@ static void load_scenario(PhysicsWorld& world, Renderer& renderer, SimControl& c
     control.reset_requested = false;
 }
 
-// 비교 모드: 같은 배치를 오일러와 Verlet 두 world에 만들고 에너지 기록을 처음부터 시작한다.
-// 충돌과 궤도 이탈 제거는 끈다 (에너지가 변하는 원인을 적분 방식 하나로 좁히기 위해).
 static void load_compare(PhysicsWorld& euler, PhysicsWorld& verlet, EnergyLog& log,
                          double& time, Renderer& renderer, SimControl& control)
 {
@@ -67,7 +63,6 @@ static void load_compare(PhysicsWorld& euler, PhysicsWorld& verlet, EnergyLog& l
     control.reset_requested = false;
 }
 
-// energy_<시나리오>_<날짜>_<시각>.csv (실행한 폴더에 저장)
 static std::string csv_file_name(const std::string& scenario_name)
 {
     std::string name;
@@ -87,7 +82,6 @@ int main()
 {
     PhysicsWorld world(Config::G);
 
-    // 비교 모드 전용. 처음 비교 모드에 들어갈 때 만든다.
     PhysicsWorld euler_world(Config::G);
     PhysicsWorld verlet_world(Config::G);
     EnergyLog energy_log;
@@ -103,7 +97,6 @@ int main()
     {
         renderer.process_events(control);
 
-        // 모드를 바꿔도 반대쪽 모드의 상태는 그대로 남아 있다.
         if(control.mode_changed)
         {
             control.mode_changed = false;

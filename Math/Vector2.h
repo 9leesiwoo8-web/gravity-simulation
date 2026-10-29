@@ -2,8 +2,6 @@
 
 #include <cmath>
 
-// 2D 벡터. 물리 계산의 안쪽 루프에서 매우 많이 불리므로
-// 모든 함수를 헤더에 인라인으로 둔다.
 class Vector2 {
 public:
     double x;

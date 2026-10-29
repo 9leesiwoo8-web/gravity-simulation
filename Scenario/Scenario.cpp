@@ -9,7 +9,6 @@ namespace {
 
     constexpr double PI = 3.141592653589793;
 
-    // 중심 천체 주위를 도는 천체 무리의 설정
     struct Ring {
         Type type;
         int count;
@@ -17,11 +16,6 @@ namespace {
         double min_mass, max_mass;
     };
 
-    // center 주위에 ring.count개의 천체를 원궤도 속도로 배치한다.
-    //  central_mass     : 궤도 속도를 정할 때 쓰는 중심 질량
-    //  center_velocity  : 중심 천체 자신의 속도 (모든 천체에 더해진다)
-    //  direction        : +1 반시계, -1 시계 방향
-    //  speed_variation  : 원궤도 속도에 곱하는 무작위 계수의 폭 (0.1이면 0.9~1.1배)
     void add_ring(
         std::vector<Particle>& out,
         std::mt19937& gen,
@@ -57,8 +51,6 @@ namespace {
         }
     }
 
-    // 전체 질량중심이 원점에 정지하도록 위치와 속도를 옮긴 뒤 world에 추가한다.
-    // (계가 한쪽으로 흘러가거나 화면 밖으로 사라지는 것을 막는다)
     void add_to_world(PhysicsWorld& world, std::vector<Particle>& bodies)
     {
         double total_mass = 0.0;
@@ -81,8 +73,6 @@ namespace {
         }
     }
 
-    // center 주위 반지름 r, 각도 angle 위치에 원궤도 속도의 speed_factor배로 천체를 놓는다.
-    // speed_factor < 1이면 타원 궤도가 된다. (비교 모드용, 난수 없음)
     void add_body(
         std::vector<Particle>& out,
         Type type,
@@ -102,7 +92,6 @@ namespace {
         out.emplace_back(mass, type, center + offset, center_velocity + tangent * speed);
     }
 
-    // ---- F1: 태양계 ----
     void build_solar_system(PhysicsWorld& world)
     {
         constexpr double SUN_MASS = 5000.0;
@@ -122,9 +111,6 @@ namespace {
         add_to_world(world, bodies);
     }
 
-    // ---- F2: 쌍성계 ----
-    // 두 별이 서로를 공전하고, 바깥에서 두 별을 함께 도는 행성들과
-    // 한쪽 별 가까이를 도는 행성이 있다.
     void build_binary_stars(PhysicsWorld& world)
     {
         constexpr double STAR_MASS = 2500.0;
@@ -133,7 +119,6 @@ namespace {
         std::random_device rd;
         std::mt19937 gen(rd());
 
-        // 같은 질량 두 별의 원궤도 속도: v^2 = G*m / (2*d)
         const double star_speed = std::sqrt(Config::G * STAR_MASS / (2.0 * SEPARATION));
 
         const Vector2 pos_a(-SEPARATION / 2.0, 0.0);
@@ -148,19 +133,15 @@ namespace {
         const Vector2 origin;
         const double total_star_mass = 2.0 * STAR_MASS;
 
-        // 두 별을 함께 도는 천체 (별 사이 거리의 2.5배 바깥)
         add_ring(bodies, gen, {Type::GIANT,     6, 750, 1100, 120, 250}, origin, origin, total_star_mass, 1, 0.05);
         add_ring(bodies, gen, {Type::PLANET,   60, 700, 1100,   5,  20}, origin, origin, total_star_mass, 1, 0.05);
         add_ring(bodies, gen, {Type::ASTEROID, 600, 700, 1000, 0.2, 1.5}, origin, origin, total_star_mass, 1, 0.05);
 
-        // 한쪽 별 가까이를 도는 행성 (힐 반지름 안쪽)
         add_ring(bodies, gen, {Type::PLANET, 3, 45, 70, 5, 12}, pos_a, vel_a, STAR_MASS, 1, 0.03);
 
         add_to_world(world, bodies);
     }
 
-    // ---- F3: 은하 충돌 ----
-    // 서로 반대 방향으로 회전하는 두 소형 은하가 마주 보고 날아온다.
     void build_galaxy_collision(PhysicsWorld& world)
     {
         constexpr double CORE_MASS = 3000.0;
@@ -186,8 +167,6 @@ namespace {
         add_to_world(world, bodies);
     }
 
-    // ---- F4: 소행성 벨트 ----
-    // 좁은 띠에 소행성이 촘촘히 돌고, 안팎에 행성과 거대 행성이 있다.
     void build_asteroid_belt(PhysicsWorld& world)
     {
         constexpr double SUN_MASS = 5000.0;
@@ -207,16 +186,11 @@ namespace {
         add_to_world(world, bodies);
     }
 
-    // ---- F5: 샌드박스 ----
-    // 태양만 있다. 마우스로 천체를 던져서 직접 꾸민다.
     void build_sandbox(PhysicsWorld& world)
     {
         world.add_Particle(Particle(5000.0, Type::SUN, Vector2(0, 0), Vector2(0, 0)));
     }
 
-
-    // ---- 비교 F1: 타원 궤도 ----
-    // 태양 하나와 길쭉한 타원 궤도의 행성 하나. 오일러의 에너지 증가가 가장 뚜렷하다.
     void build_compare_eccentric(PhysicsWorld& world)
     {
         constexpr double SUN_MASS = 5000.0;
@@ -230,7 +204,6 @@ namespace {
         add_to_world(world, bodies);
     }
 
-    // ---- 비교 F2: 작은 태양계 ----
     void build_compare_solar_system(PhysicsWorld& world)
     {
         constexpr double SUN_MASS = 5000.0;
@@ -261,7 +234,6 @@ namespace {
         add_to_world(world, bodies);
     }
 
-    // ---- 비교 F3: 쌍성계 ----
     void build_compare_binary(PhysicsWorld& world)
     {
         constexpr double STAR_MASS = 2500.0;
@@ -286,9 +258,6 @@ namespace {
         add_to_world(world, bodies);
     }
 
-
-    // ---- 비교 F4: 천체 300개 ----
-    // 태양, 행성 몇 개, 소행성 약 290개. 시드를 고정해 두 world가 같은 배치로 시작한다.
     void build_compare_crowd(PhysicsWorld& world)
     {
         constexpr double SUN_MASS = 5000.0;
